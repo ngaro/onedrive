@@ -44,5 +44,5 @@ my $onedrivedir=$ENV{HOME}."/$container";
 
 fout(1, "Run this program as a regular user instead of root") if($<==0);
 mkdir $onedrivedir unless ( -d $onedrivedir );
-fout(50,"Kan niet bouwen") unless (system "cd /home/garo/dockerimages/onedrive && docker build -t $image" ==0); #TODO later vervangen door een pull
-system "docker run -it --restart on-failure -v $onedrivedir:/onedrive --name $container $image";
+fout(50,"Kan niet bouwen") unless (system("cd /home/garo/code/dockerimages/onedrive && docker build -t $image")==0); #TODO later vervangen door een pull
+system("docker run -it --restart on-failure -v $onedrivedir:/onedrive --name $container $image");
