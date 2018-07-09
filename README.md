@@ -27,11 +27,23 @@ sudo apt install libsqlite3-dev
 curl -fsS https://dlang.org/install.sh | bash -s dmd
 ```
 
-### Dependencies: Fedora/CentOS
+### Dependencies: Fedora < Version 18 / CentOS / RHEL 
 ```sh
 sudo yum install libcurl-devel
 sudo yum install sqlite-devel
 curl -fsS https://dlang.org/install.sh | bash -s dmd
+```
+
+### Dependencies: Fedora > Version 18 
+```sh
+sudo dnf install libcurl-devel
+sudo dnf install sqlite-devel
+curl -fsS https://dlang.org/install.sh | bash -s dmd
+```
+
+Alternatively, if you are on a 64 bit system, you may also use the LLVM D Compiler (LDC):
+```
+sudo dnf install ldc
 ```
 
 ### Dependencies: Arch Linux
@@ -237,6 +249,7 @@ If you encounter any bugs you can report them here on Github. Before filing an i
 Usage: onedrive [OPTION]...
 
 no option        		   No Sync and exit
+       --check-for-nomount Check for the presence of .nosync in the syncdir root. If found, do not perform sync.
                  --confdir Set the directory used to store the configuration files
         --create-directory Create a directory on OneDrive - no sync will be performed.
    --destination-directory Destination directory for renamed or move on OneDrive - no sync will be performed.
