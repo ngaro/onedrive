@@ -14,7 +14,7 @@ use Data::Dumper;
 sub fout {
 	my $returncode=$_[0];
 	$returncode=pop if(@_==3);
-	say STDERR "ERROR $_[0]: $_[1]"; exit $returncode;
+	say STDERR "ERROR $_[0]: $_[1]..."; exit $returncode;
 }
 
 #toon wat tussen =pod en =cut staat indien -h of --help is gegeven en stop het programma
@@ -38,11 +38,23 @@ DOET: Starts a docker container for onedrive
 ARGUMENTEN: <none>
 =cut
 
+sub installeerdocker {
+	say "TODO Docker installeren";
+}
+
 my $image="onedrive";
 my $container="onedrive";
 my $onedrivedir=$ENV{HOME}."/$container";
 
 fout(1, "Run this program as a regular user instead of root") if($<==0);
 mkdir $onedrivedir unless ( -d $onedrivedir );
-fout(50,"Kan niet bouwen") unless (system("cd /home/garo/code/dockerimages/onedrive && docker build -t $image .")==0); #TODO later vervangen door een pull
+installeerdocker unless ( -x "/usr/bin/docker");
+exit;
+#unless(dockerbestaat) { fout(2, "Automatic installation of docker failed, ask Nikolas to install it manually") unless(installeerdocker); }
+#	if(containernietbestaat) {
+#		if(imagenietbestaat) {
+#			fout(50,"Kan niet bouwen") unless (system("cd /home/garo/code/dockerimages/onedrive && docker build -t $image .")==0); #TODO later vervangen door een pull
+#		}
+#	}
+#}
 system("docker run -it --restart on-failure -v $onedrivedir:/root/OneDrive --name $container $image");
