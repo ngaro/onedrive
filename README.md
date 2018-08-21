@@ -12,60 +12,130 @@
 * While local changes are uploaded right away, remote changes are delayed
 * No GUI
 
-## Setup
-
-### Build Requirements
-* Build environment must have at least 1GB of memory
+## Build Requirements
+* Build environment must have at least 1GB of memory & 1GB swap space
 * [libcurl](http://curl.haxx.se/libcurl/)
 * [SQLite 3](https://www.sqlite.org/)
 * [Digital Mars D Compiler (DMD)](http://dlang.org/download.html)
 
-### Dependencies: Ubuntu/Debian
-```sh
+### Dependencies: Ubuntu/Debian - x86_64
+```
+sudo apt install build-essential
 sudo apt install libcurl4-openssl-dev
 sudo apt install libsqlite3-dev
 curl -fsS https://dlang.org/install.sh | bash -s dmd
 ```
 
+### Dependencies: Ubuntu - i386 / i686
+**Note:** Validated with `Linux ubuntu-i386-vm 4.13.0-36-generic #40~16.04.1-Ubuntu SMP Fri Feb 16 23:26:51 UTC 2018 i686 i686 i686 GNU/Linux` and DMD 2.081.1
+```
+sudo apt install build-essential
+sudo apt install libcurl4-openssl-dev
+sudo apt install libsqlite3-dev
+curl -fsS https://dlang.org/install.sh | bash -s dmd
+```
+
+### Dependencies: Debian - i386 / i686
+**Note:** Validated with `Linux debian-i386 4.9.0-7-686-pae #1 SMP Debian 4.9.110-1 (2018-07-05) i686 GNU/Linux` and LDC - the LLVM D compiler (1.8.0).
+
+First install development dependancies as per below:
+```
+sudo apt install build-essential
+sudo apt install libcurl4-openssl-dev
+sudo apt install libsqlite3-dev
+sudo apt install git
+```
+Second, install the LDC compiler as per below:
+```
+mkdir ldc && cd ldc
+wget http://ftp.us.debian.org/debian/pool/main/l/ldc/ldc_1.8.0-3_i386.deb
+wget http://ftp.us.debian.org/debian/pool/main/l/ldc/libphobos2-ldc-shared-dev_1.8.0-3_i386.deb
+wget http://ftp.us.debian.org/debian/pool/main/l/ldc/libphobos2-ldc-shared78_1.8.0-3_i386.deb
+wget http://ftp.us.debian.org/debian/pool/main/l/llvm-toolchain-5.0/libllvm5.0_5.0.1-2~bpo9+1_i386.deb
+wget http://ftp.us.debian.org/debian/pool/main/n/ncurses/libtinfo6_6.1+20180714-1_i386.deb
+sudo dpkg -i ./*.deb
+```
+
 ### Dependencies: Fedora < Version 18 / CentOS / RHEL 
-```sh
+```
+sudo yum groupinstall 'Development Tools'
 sudo yum install libcurl-devel
 sudo yum install sqlite-devel
 curl -fsS https://dlang.org/install.sh | bash -s dmd
 ```
 
 ### Dependencies: Fedora > Version 18 
-```sh
+```
+sudo dnf groupinstall 'Development Tools'
 sudo dnf install libcurl-devel
 sudo dnf install sqlite-devel
 curl -fsS https://dlang.org/install.sh | bash -s dmd
 ```
 
-Alternatively, if you are on a 64 bit system, you may also use the LLVM D Compiler (LDC):
-```
-sudo dnf install ldc
-```
-
 ### Dependencies: Arch Linux
-```sh
+```
 sudo pacman -S curl sqlite dmd
 ```
 
-### Installation
-```sh
+### Dependencies: Raspbian (ARM)
+```
+sudo apt-get install libcurl4-openssl-dev
+sudo apt-get install libsqlite3-dev
+wget https://github.com/ldc-developers/ldc/releases/download/v1.10.0/ldc2-1.10.0-linux-armhf.tar.xz
+tar -xvf ldc2-1.10.0-linux-armhf.tar.xz
+```
+
+### Dependencies: Gentoo
+```
+sudo emerge app-portage/layman
+sudo layman -a dlang
+
+Add ebuild from contrib/gentoo to a local overlay to use.
+```
+
+### Dependencies: OpenSuSE Leap 15.0
+```
+sudo zypper addrepo --check --refresh --name "D" http://download.opensuse.org/repositories/devel:/languages:/D/openSUSE_Leap_15.0/devel:languages:D.repo
+sudo zypper install git libcurl-devel sqlite3-devel D:dmd D:libphobos2-0_81 D:phobos-devel D:phobos-devel-static
+```
+
+## Compilation & Installation
+### Building using DMD Reference Compiler:
+Before cloning and compiling, if you have installed DMD via curl for your OS, you will need to activate DMD as per example below:
+```
+Run `source ~/dlang/dmd-2.081.1/activate` in your shell to use dmd-2.081.1.
+This will setup PATH, LIBRARY_PATH, LD_LIBRARY_PATH, DMD, DC, and PS1.
+Run `deactivate` later on to restore your environment.
+```
+Without performing this step, the compilation process will fail.
+
+**Note:** Depending on your DMD version, substitute `2.081.1` above with your DMD version that is installed.
+
+```
 git clone https://github.com/abraunegg/onedrive.git
 cd onedrive
 make
 sudo make install
 ```
 
-Using a different compiler (for example [LDC](https://wiki.dlang.org/LDC)):
-```sh
-make DC=ldmd2
+### Building using a different compiler (for example [LDC](https://wiki.dlang.org/LDC)):
+#### Debian - i386 / i686
+```
+git clone https://github.com/abraunegg/onedrive.git
+cd onedrive
+make DC=/usr/bin/ldmd2
+sudo make install
 ```
 
-**Note:** 32Bit / i686 operating systems are not supported when using this client.
+#### ARM Architecture
+```
+git clone https://github.com/abraunegg/onedrive.git
+cd onedrive
+make DC=~/ldc2-1.10.0-linux-armhf/bin/ldmd2
+sudo make install
+```
 
+## Using the client
 ### First run :zap:
 After installing the application you must run it at least once from the terminal to authorize it.
 
@@ -161,14 +231,38 @@ mkdir -p ~/.config/onedrive
 cp ./config ~/.config/onedrive/config
 nano ~/.config/onedrive/config
 ```
+This file does not get created by default, and should only be created if you want to change the 'default' operational parameters. 
 
 Available options:
 * `sync_dir`: directory where the files will be synced
-* `skip_file`: any files or directories that match this pattern will be skipped during sync.
+* `skip_file`: any files or directories that match this pattern will be skipped during sync
+* `skip_symlinks`: any files or directories that are symlinked will be skipped during sync
+* `monitor_interval`: time interval in seconds by which the monitor process will process local and remote changes
+
+### sync_dir
+Example: `sync_dir="~/MyDirToSync"`
+
+**Please Note:**
+Proceed with caution here when changing the default sync dir from ~/OneDrive to ~/MyDirToSync
+
+The issue here is around how the client stores the sync_dir path in the database. If the config file is missing, or you don't use the `--syncdir` parameter - what will happen is the client will default back to `~/OneDrive` and 'think' that either all your data has been deleted - thus delete the content on OneDrive, or will start downloading all data from OneDrive into the default location.
+
+### skip_file
+Example: `skip_file = ".*|~*|Desktop|Documents/OneNote*|Documents/IISExpress|Documents/SQL Server Management Studio|Documents/Visual Studio*|Documents/config.xlaunch|Documents/WindowsPowerShell"`
 
 Patterns are case insensitive. `*` and `?` [wildcards characters](https://technet.microsoft.com/en-us/library/bb490639.aspx) are supported. Use `|` to separate multiple patterns.
 
-Note: after changing `skip_file`, you must perform a full synchronization by executing `onedrive --resync`
+**Note:** after changing `skip_file`, you must perform a full synchronization by executing `onedrive --resync`
+
+### skip_symlinks
+Example: `skip_symlinks = "true"`
+
+Setting this to `"true"` will skip all symlinks while syncing.
+
+### monitor_interval
+Example: `monitor_interval = "300"`
+
+The monitor interval is defined as the wait time 'between' sync's when running in monitor mode. By default without configuration, the monitor_interval is set to 45 seconds. Setting this value to 300 will run the sync process every 5 minutes.
 
 ### Selective sync
 Selective sync allows you to sync only specific files and directories.
@@ -180,8 +274,13 @@ Backup
 Documents/latest_report.docx
 Work/ProjectX
 notes.txt
+Blender
+Cinema Soc
+Codes
+Textbooks
+Year 2
 ```
-Note: after changing the sync list, you must perform a full synchronization by executing `onedrive --resync`
+**Note:** after changing the sync list, you must perform a full synchronization by executing `onedrive --resync`
 
 ### Shared folders
 Folders shared with you can be synced by adding them to your OneDrive. To do that open your Onedrive, go to the Shared files list, right click on the folder you want to sync and then click on "Add to my OneDrive".
@@ -258,10 +357,12 @@ no option        		   No Sync and exit
              --local-first Synchronize from the local directory source first, before downloading changes from OneDrive.
                   --logout Logout the current user
 -m               --monitor Keep monitoring for local and remote changes
+        --no-remote-delete Do not delete local file 'deletes' from OneDrive when using --upload-only
              --print-token Print the access token, useful for debugging
                   --resync Forget the last saved state, perform a full sync
         --remove-directory Remove a directory on OneDrive - no sync will be performed.
         --single-directory Specify a single local directory within the OneDrive root to sync.
+           --skip-symlinks Skip syncing of symlinks
         --source-directory Source directory to rename or move on OneDrive - no sync will be performed.
                  --syncdir Set the directory used to sync the files that are synced
              --synchronize Perform a synchronization

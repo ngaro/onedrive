@@ -1,7 +1,8 @@
 import core.stdc.stdlib: EXIT_SUCCESS, EXIT_FAILURE;
 import core.memory, core.time, core.thread;
-import std.getopt, std.file, std.path, std.process, std.stdio;
+import std.getopt, std.file, std.path, std.process, std.stdio, std.conv;
 import config, itemdb, monitor, onedrive, selective, sync, util;
+import std.net.curl: CurlException;
 static import log;
 
 int main(string[] args)
@@ -58,7 +59,13 @@ int main(string[] args)
 	bool uploadOnly;
 	// Add a check mounts option to resolve https://github.com/abraunegg/onedrive/issues/8
 	bool checkMount;
-		
+	// Add option to skip symlinks
+	bool skipSymlinks;
+	// Add option for no remote delete
+	bool noRemoteDelete;
+	// Are we able to reach the OneDrive Service
+	bool online = false;
+	
 	try {
 		auto opt = getopt(
 			args,
@@ -73,10 +80,12 @@ int main(string[] args)
 			"local-first", "Synchronize from the local directory source first, before downloading changes from OneDrive.", &localFirst,
 			"logout", "Logout the current user", &logout,
 			"monitor|m", "Keep monitoring for local and remote changes", &monitor,
+			"no-remote-delete", "Do not delete local file 'deletes' from OneDrive when using --upload-only", &noRemoteDelete,
 			"print-token", "Print the access token, useful for debugging", &printAccessToken,
 			"resync", "Forget the last saved state, perform a full sync", &resync,
 			"remove-directory", "Remove a directory on OneDrive - no sync will be performed.", &removeDirectory,
 			"single-directory", "Specify a single local directory within the OneDrive root to sync.", &singleDirectory,
+			"skip-symlinks", "Skip syncing of symlinks", &skipSymlinks,
 			"source-directory", "Source directory to rename or move on OneDrive - no sync will be performed.", &sourceDirectory,
 			"syncdir", "Set the directory used to sync the files that are synced", &syncDirName,
 			"synchronize", "Perform a synchronization", &synchronize,
@@ -118,8 +127,9 @@ int main(string[] args)
 	cfg.init();
 	
 	// command line parameters override the config
-	if (syncDirName) cfg.setValue("sync_dir", syncDirName);
-
+	if (syncDirName) cfg.setValue("sync_dir", syncDirName.expandTilde().absolutePath());
+	if (skipSymlinks) cfg.setValue("skip_symlinks", "true");
+  
 	// upgrades
 	if (exists(configDirName ~ "/items.db")) {
 		remove(configDirName ~ "/items.db");
@@ -138,11 +148,13 @@ int main(string[] args)
 	}
 
 	log.vlog("Initializing the OneDrive API ...");
-	bool online = testNetwork();
-	if (!online && !monitor) {
-		log.error("No network connection");
+	try {
+		online = testNetwork();
+	} catch (CurlException e) {
+		// No network connection to OneDrive Service
+		log.error("No network connection to Microsoft OneDrive Service");
 		return EXIT_FAILURE;
-	}
+	} 
 	
 	// Initialize OneDrive, check for authorization
 	auto onedrive = new OneDriveApi(cfg, debugHttp);
@@ -192,7 +204,20 @@ int main(string[] args)
 	// Initialise the sync engine
 	log.log("Initializing the Synchronization Engine ...");
 	auto sync = new SyncEngine(cfg, onedrive, itemdb, selectiveSync);
-	sync.init();
+	
+	try {
+		sync.init();
+	} catch (OneDriveException e) {
+		if (e.httpStatusCode == 400 || e.httpStatusCode == 401) {
+			// Authorization is invalid
+			log.log("\nAuthorization token invalid, use --logout to authorize the client again\n");
+			onedrive.http.shutdown();
+			return EXIT_FAILURE;
+		}
+	}
+	
+	// We should only set noRemoteDelete in an upload-only scenario
+	if ((uploadOnly)&&(noRemoteDelete)) sync.setNoRemoteDelete();
 	
 	// Do we need to validate the syncDir to check for the presence of a '.nosync' file
 	if (checkMount) {
@@ -246,7 +271,8 @@ int main(string[] args)
 		}
 			
 		if (monitor) {
-			log.vlog("Initializing monitor ...");
+			log.log("Initializing monitor ...");
+			log.log("OneDrive monitor interval (seconds): ", to!long(cfg.getValue("monitor_interval")));
 			Monitor m = new Monitor(selectiveSync);
 			m.onDirCreated = delegate(string path) {
 				log.vlog("[M] Directory created: ", path);
@@ -280,15 +306,16 @@ int main(string[] args)
 					log.log(e.msg);
 				}
 			};
-			if (!downloadOnly) m.init(cfg, verbose);
+			// initialise the monitor class
+			if (cfg.getValue("skip_symlinks") == "true") skipSymlinks = true;
+			if (!downloadOnly) m.init(cfg, verbose, skipSymlinks);
 			// monitor loop
-			immutable auto checkInterval = dur!"seconds"(45);
+			immutable auto checkInterval = dur!"seconds"(to!long(cfg.getValue("monitor_interval")));
 			auto lastCheckTime = MonoTime.currTime();
 			while (true) {
 				if (!downloadOnly) m.update(online);
 				auto currTime = MonoTime.currTime();
 				if (currTime - lastCheckTime > checkInterval) {
-					lastCheckTime = currTime;
 					online = testNetwork();
 					if (online) {
 						performSync(sync, singleDirectory, downloadOnly, localFirst, uploadOnly);
@@ -297,19 +324,19 @@ int main(string[] args)
 							m.update(false);
 						}
 					}
+					// performSync complete, set lastCheckTime to current time
+					lastCheckTime = MonoTime.currTime();
 					GC.collect();
 				} else {
 					Thread.sleep(dur!"msecs"(100));
 				}
 			}
 		}
-
 	}
 
 	// workaround for segfault in std.net.curl.Curl.shutdown() on exit
 	onedrive.http.shutdown();
 	return EXIT_SUCCESS;
-	
 }
 
 // try to synchronize the folder three times
@@ -331,33 +358,55 @@ void performSync(SyncEngine sync, string singleDirectory, bool downloadOnly, boo
 			if (singleDirectory != ""){
 				// we were requested to sync a single directory
 				log.vlog("Syncing changes from this selected path: ", singleDirectory);
-				if (localFirst) {
-					if (uploadOnly){
-						log.log("Syncing changes from selected local path only - NOT syncing data changes from OneDrive ...");
-						sync.scanForDifferences(localPath);
-					} else {
+				if (uploadOnly){
+					// Upload Only of selected single directory
+					log.log("Syncing changes from selected local path only - NOT syncing data changes from OneDrive ...");
+					sync.scanForDifferences(localPath);
+				} else {
+					// No upload only
+					if (localFirst) {
+						// Local First
 						log.log("Syncing changes from selected local path first before downloading changes from OneDrive ...");
 						sync.scanForDifferences(localPath);
 						sync.applyDifferencesSingleDirectory(remotePath);
+					} else {
+						// OneDrive First
+						log.log("Syncing changes from selected OneDrive path ...");
+						sync.applyDifferencesSingleDirectory(remotePath);
+						// is this a download only request?
+						if (!downloadOnly) {
+							// process local changes
+							sync.scanForDifferences(localPath);
+							// ensure that the current remote state is updated locally
+							sync.applyDifferencesSingleDirectory(remotePath);
+						}
 					}
-				} else {
-					log.log("Syncing changes from selected OneDrive path first before uploading local changes ...");
-					sync.applyDifferencesSingleDirectory(remotePath);
-					sync.scanForDifferences(localPath);
 				}
 			} else {
-				if (!uploadOnly){
-					// original onedrive client logic below
-					sync.applyDifferences();
-					if (!downloadOnly) {
-						sync.scanForDifferences(localPath);
-						// ensure that the current state is updated
-						sync.applyDifferences();
-					}
-				} else {
-					// upload only
+				// no single directory sync
+				if (uploadOnly){
+					// Upload Only of entire sync_dir
 					log.log("Syncing changes from local path only - NOT syncing data changes from OneDrive ...");
 					sync.scanForDifferences(localPath);
+				} else {
+					// No upload only
+					if (localFirst) {
+						// sync local files first before downloading from OneDrive
+						log.log("Syncing changes from local path first before downloading changes from OneDrive ...");
+						sync.scanForDifferences(localPath);
+						sync.applyDifferences();
+					} else {
+						// sync from OneDrive first before uploading files to OneDrive
+						log.log("Syncing changes from OneDrive ...");
+						sync.applyDifferences();
+						// is this a download only request?
+						if (!downloadOnly) {
+							// process local changes
+							sync.scanForDifferences(localPath);
+							// ensure that the current remote state is updated locally
+							sync.applyDifferences();
+						}
+					}
 				}
 			}
 			count = -1;

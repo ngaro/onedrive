@@ -14,12 +14,13 @@ SOURCES = \
 	src/sqlite.d \
 	src/sync.d \
 	src/upload.d \
-	src/util.d
+	src/util.d \
+	src/progress.d
 
 all: onedrive onedrive.service
 
 clean:
-	rm -f onedrive onedrive.o onedrive.service
+	rm -f onedrive onedrive.o onedrive.service onedrive@.service
 
 install: all
 	mkdir -p $(DESTDIR)/var/log/onedrive
@@ -27,7 +28,10 @@ install: all
 	chmod 0775 $(DESTDIR)/var/log/onedrive
 	install -D onedrive $(DESTDIR)$(PREFIX)/bin/onedrive
 	install -D -m 644 logrotate/onedrive.logrotate $(DESTDIR)/etc/logrotate.d/onedrive
-	cp -af *.service $(DESTDIR)/usr/lib/systemd/user/
+	mkdir -p $(DESTDIR)/usr/lib/systemd/user/
+	chown root.root $(DESTDIR)/usr/lib/systemd/user/
+	chmod 0755 $(DESTDIR)/usr/lib/systemd/user/
+	cp -raf *.service $(DESTDIR)/usr/lib/systemd/user/
 	chmod 0644 $(DESTDIR)/usr/lib/systemd/user/onedrive*.service
 	
 onedrive: version $(SOURCES)
